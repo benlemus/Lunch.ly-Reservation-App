@@ -2,6 +2,7 @@
 
 const db = require("../db");
 const Reservation = require("./reservation");
+const ExpressError = require("../expressError");
 
 /** Customer of the restaurant. */
 
@@ -14,10 +15,17 @@ class Customer {
     this.notes = notes;
   }
 
+  get notes() {
+    return this._notes;
+  }
+
+  set notes(value) {
+    this._notes = value ? String(value) : "";
+  }
+
   /** find all customers. */
 
   static async all() {
-    console.log("before results");
     const results = await db.query(
       `SELECT id, 
          first_name AS "firstName",  
@@ -27,7 +35,6 @@ class Customer {
        FROM customers
        ORDER BY last_name, first_name`
     );
-    console.log("after results", results.rows);
     return results.rows.map((c) => new Customer(c));
   }
 
@@ -55,6 +62,40 @@ class Customer {
     return new Customer(customer);
   }
 
+  /** get top 10 best customers. */
+  static async getTopCustomers() {
+    const results = await db.query(
+      `SELECT 
+        c.id, 
+        c.first_name AS "firstName",  
+        c.last_name AS "lastName", 
+        c.phone, 
+        c.notes,
+        COUNT(r.id) AS num_reservations
+      FROM customers AS c
+      LEFT JOIN reservations AS r ON c.id = r.customer_id
+      GROUP BY c.id, c.first_name, c.last_name, c.phone, c.notes
+      ORDER BY num_reservations DESC
+      LIMIT 10`
+    );
+
+    return results.rows.map((row) => new Customer(row));
+  }
+
+  /** search by customer name. */
+
+  static async searchCustomer(query) {
+    const result = await db.query(
+      `SELECT id, first_name AS "firstName", last_name AS "lastName", phone, notes
+     FROM customers
+     WHERE first_name ILIKE $1
+        OR last_name ILIKE $1
+        OR CONCAT(first_name, ' ', last_name) ILIKE $1`,
+      [`%${query}%`]
+    );
+    return result.rows.map((row) => new Customer(row));
+  }
+
   /** get all reservations for this customer. */
 
   async getReservations() {
@@ -69,16 +110,20 @@ class Customer {
         `INSERT INTO customers (first_name, last_name, phone, notes)
              VALUES ($1, $2, $3, $4)
              RETURNING id`,
-        [this.firstName, this.lastName, this.phone, this.notes]
+        [this.firstName, this.lastName, this.phone, this._notes]
       );
       this.id = result.rows[0].id;
     } else {
       await db.query(
         `UPDATE customers SET first_name=$1, last_name=$2, phone=$3, notes=$4
              WHERE id=$5`,
-        [this.firstName, this.lastName, this.phone, this.notes, this.id]
+        [this.firstName, this.lastName, this.phone, this._notes, this.id]
       );
     }
+  }
+
+  get fullName() {
+    return `${this.firstName} ${this.lastName}`.trim();
   }
 }
 

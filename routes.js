@@ -11,8 +11,25 @@ const router = new express.Router();
 
 router.get("/", async function (req, res, next) {
   try {
-    const customers = await Customer.all();
+    let customers;
+
+    if (req.query.q) {
+      customers = await Customer.searchCustomer(req.query.q);
+    } else {
+      customers = await Customer.all();
+    }
     return res.render("customer_list.html", { customers });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/** Gets top 10 customers by reservations. */
+router.get("/top-customers", async function (req, res, next) {
+  try {
+    const customers = await Customer.getTopCustomers();
+
+    return res.render("top_customer_list.html", { customers });
   } catch (err) {
     return next(err);
   }
@@ -35,9 +52,9 @@ router.post("/add/", async function (req, res, next) {
     const firstName = req.body.firstName;
     const lastName = req.body.lastName;
     const phone = req.body.phone;
-    const notes = req.body.notes;
 
-    const customer = new Customer({ firstName, lastName, phone, notes });
+    const customer = new Customer({ firstName, lastName, phone });
+    customer.notes = req.body.notes;
     await customer.save();
 
     return res.redirect(`/${customer.id}/`);
@@ -93,20 +110,16 @@ router.post("/:id/edit/", async function (req, res, next) {
 
 router.post("/:id/add-reservation/", async function (req, res, next) {
   try {
-    const customerId = req.params.id;
-    const startAt = new Date(req.body.startAt);
-    const numGuests = req.body.numGuests;
-    const notes = req.body.notes;
-
     const reservation = new Reservation({
-      customerId,
-      startAt,
-      numGuests,
-      notes,
+      customerId: req.params.id,
+      startAt: new Date(req.body.startAt),
+      numGuests: req.body.numGuests,
+      notes: req.body.notes,
     });
+
     await reservation.save();
 
-    return res.redirect(`/${customerId}/`);
+    return res.redirect(`/${req.params.id}/`);
   } catch (err) {
     return next(err);
   }
